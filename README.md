@@ -1,93 +1,111 @@
-這是一份為妳整理的 **DipMaster 投資導航系統 Ver 2.4 終極實戰導航版** 的 `.md` 檔案內容。
+# DipMaster Lite — 快速乖離診斷
 
-我已經將我們今天討論的所有優化細節——包含 **0-20 批次彈性、年線斜率攔截機制、加權平均成本實證、以及前端數據實證層**——全部整合進這份最新的工程藍圖中。妳可以直接複製這段內容到妳的 `README.md` 或專案文件中。
+> 年線乖離階梯加碼法（240MA Bias Ladder DCA）的輕量實作
+> 快速診斷 ETF 目前乖離率，產出分批買入計畫與梯子視覺化圖表
+
+**Live Demo**: [dipmaster-lite-b8v8na4gubqcmum7urzhv2.streamlit.app](https://dipmaster-lite-b8v8na4gubqcmum7urzhv2.streamlit.app/)
+**GitHub**: [JenniTzu/dipmaster-lite](https://github.com/JenniTzu/dipmaster-lite)
 
 ---
 
-# 專案規畫書：DipMaster 投資導航系統 (Ver 2.4 終極實戰導航版)
+## 功能概覽
 
-## 一、 專案定位與願景
-[cite_start]建立一個基於數據驅動（Data-Driven）的自動化投資系統。透過「還原股價位階」與「資金階梯計畫」在風險受控（Slope 攔截）下，加速平均成本下降並極大化複利效果，解決定期定額累積速度過慢的痛點 [cite: 48-50]。
+| 區塊 | 內容 |
+| --- | --- |
+| 🌐 全球戰情看板 | 台股 P/E 百分位、SPY/QQQ/台指對比年線、VIX 情境標籤、USD/TWD 5 年百分位 |
+| 📊 個股診斷 | 即時 Bias%、MA240 斜率（含數值）、趨勢閘門判斷 |
+| 📈 梯子視覺化 | Plotly 互動圖：近 120 日收盤價 × MA240 × 各批次目標線（黃→綠→青→藍漸層） |
+| 📋 決策建議總表 | N 批階梯觸發點、目標成交價、投入金額、建議股數、加權均成（幣別標示） |
+| 📖 策略白皮書 | 四大學術支柱、完整公式、指標解讀框架、適用條件 |
+| 📝 決策速查卡 | 三步決策流程、4 個 LaTeX 公式、兩個保護機制 |
 
-## 二、 專業級系統架構 (Decoupled Architecture)
-[cite_start]採用解耦架構，將數據獲取、邏輯分析與資金管理徹底分離，確保系統具備高度的可測試性與金融級嚴謹度 [cite: 51-52]：
+---
 
-```text
-05_DipMaster_Navigator/
-├── src/                     # 核心邏輯模組
-│   ├── data_loader.py       # 【偵查兵】負責還原股價、VIX、P/E、匯率抓取
-│   ├── analyzer.py           # 【軍師】負責算位階、240MA 斜率與診斷文案
-│   └── capital_manager.py    # 【精算師】負責 0-20 批計畫、平均成本試算
-├── app.py                   # 【接待員】Streamlit 網頁主程式 (UI 介面)
-├── requirements.txt         # 套件清單
-└── README.md                # 專案說明書 (本文件)
+## 投資策略核心
+
+**策略名稱**：年線乖離階梯加碼法（240MA Bias Ladder DCA）
+
+| 元素 | 設計 |
+| --- | --- |
+| 均值錨點 | 240 日移動平均線（MA240，約 1 個完整交易年） |
+| 觸發條件 | `Bias% = (Price_adj − MA240) / MA240 × 100`，Bias% < 0 進入買入觀察區 |
+| 趨勢閘門 | `Slope = MA240[t] − MA240[t-5]`（5 日有限差分），Slope < 0 暫緩加碼 |
+| 目標價計算 | `Target_n = MA240 × (1 + Bias_n / 100)`，每批間距 2%，錨點為年線非現價 |
+| 資金分配 | 等額分批（總預算 ÷ N），台股支援零股，美股以整股計算 |
+
+**學術依據**：De Bondt & Thaler (1985) 均值回歸、Statman (1995) DCA、Graham 安全邊際、Faber (2007) 趨勢過濾
+
+---
+
+## 快速開始
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
-| 模組名稱 | 角色定位 | 核心職責 |
-| :--- | :--- | :--- |
-| **Data Loader** | 偵查兵 | 抓取 5 年還原股價、VIX、台股 P/E、USD/TWD 歷史匯率。 |
-| **Logic Analyzer** | 軍師 | [cite_start]計算 $Bias\%$ 分位點、240MA 斜率 ($Slope$) 與攔截信號 [cite: 52, 59]。 |
-| **Capital Manager** | 精算師 | [cite_start]處理 0-20 批加碼計畫、**加權平均成本追蹤** 與 匯率換算 [cite: 52, 66-67]。 |
-| **UI Controller** | 接待員 | [cite_start]Streamlit 前端網頁，呈現數據實證看板與執行建議表 [cite: 52, 82-83]。 |
+### 標的代號輸入規則
+
+| 輸入 | 系統行為 |
+| --- | --- |
+| `0050` / `00878` | 自動補全為 `0050.TW` / `00878.TW` |
+| `0056.TWO` | 直接輸入（TPEx 上市，不自動補全） |
+| `QQQ` / `SPY` | 美股直接輸入 |
+| `2330.TW` | 台股個股（含後綴直接輸入） |
+
+> 注意：本工具設計用於**寬基指數 ETF**，不適合個股或槓桿 ETF。
 
 ---
 
-## 三、 核心業務邏輯 (Business Logic)
+## 系統架構
 
-### 1. 財務數據運算：還原指標與趨勢
-* **還原年線乖離位階**：
-  $$Bias\% = \frac{Price_{adj} - 240MA_{adj}}{240MA_{adj}}$$
-  [cite_start]計算該指標在過去 **5 年** 數據中的歷史分位點 ($Percentile$) [cite: 55-57]。
-* **空頭鈍化過濾 (Interceptor)**：
-  [cite_start]計算 240MA 斜率 ($Slope$)。若 $Slope < 0$ (下彎)，系統強制攔截資金投入，建議水位歸零 [cite: 58-60]。
+```text
+data_loader.py → analyzer.py → capital_manager.py → app.py
+```
 
-### 2. 資金與成本實證
-* **加權平均成本 (Avg Cost)**：
-  $$\text{New Avg Cost} = \frac{(\text{Prev Shares} \times \text{Prev Avg}) + (\text{New Shares} \times \text{New Price})}{\text{Total Shares}}$$
-  [cite_start]確保每一次加碼皆有明確的成本降幅實證 [cite: 66-67]。
-* [cite_start]**自動匯率轉換**：偵測標的（美股/台股），自動按 USD/TWD 匯率換算預算（無條件捨去至整數股） [cite: 62-65]。
+| 模組 | 職責 | 關鍵輸出 |
+| --- | --- | --- |
+| `src/data_loader.py` | 平行抓取市場數據（ThreadPoolExecutor × 5） | `get_stock_data()` → DataFrame；`get_market_evidence()` → 全球指標 dict |
+| `src/analyzer.py` | 計算 Bias%、斜率、趨勢判斷 | 7 key dict：`Current_Price`, `MA240`, `Bias_%`, `Is_Downtrend`, `Slope`, `MA240_Reliable`, `Narrative` |
+| `src/capital_manager.py` | 產出 N 批階梯買入計畫 | summary dict + 8 欄 DataFrame（含幣別標示加權均成） |
+| `app.py` | Streamlit UI、梯子圖、所有警示邏輯 | 網頁前端 |
 
----
+### 關鍵設計細節
 
-## 四、 前端介面設計 (UX Spec)
-
-* **1. 市場環境掃描 (Global Gauges)**：
-    * 顯示 VIX、台股 P/E 與 USD/TWD 匯率。
-    * [cite_start]**數據實證**：數值下方標註 5 年位階，若台幣過弱 (FX > 80%) 則標註「避險不換匯」 [cite: 50-51]。
-* **2. 用戶指揮中心 (Inputs)**：
-    * 支援美股/台股標的、總加碼本金。
-    * **彈性批次**：支援使用者手動輸入 **0 - 20 批** 加碼計畫。
-* **3. 專家診斷看板 (Expert Narrative)**：
-    * [cite_start]以專業分析師口吻動態產出診斷：包含位階判斷、趨勢預警與執行指令 [cite: 78-81]。
-* **4. 決策建議總表 (Master Table)**：
-    * [cite_start]包含：觸發條件、目標成交價、投入金額 (TWD/USD)、建議股數、**累積平均成本** [cite: 82-83]。
+- **MA240_Reliable**：當歷史資料 < 240 個交易日，以擴展均值替代並顯示警告，避免靜默精度劣化
+- **正乖離預演模式**：Bias% > 0 時系統顯示警告，計畫為預演而非即時建議
+- **幣別明確標示**：加權均成欄位顯示 `(USD/股)` 或 `(TWD/股)`，預算摘要使用 `NT$`
+- **VIX 情境標籤**：5 個區間（平靜 / 低波動 / 正常 / 恐慌 / 極度恐慌）自動標示
+- **資料快取**：`get_market_evidence()` 存於 `st.session_state`，瀏覽器 session 有效，可點「🔄 重新整理」強制更新
 
 ---
 
-## 五、 重要結論與技術定案 (Critical Decisions)
+## 資料來源
 
-1.  [cite_start]**數據準確性**：全系統強制使用 **「還原股價 (Adjusted Price)」** 排除息值干擾 [cite: 55-56]。
-2.  **數據頻率**：定案為 **EOD (收盤後運算)**，隔日掛單，維持 $0 元 API 成本。
-3.  [cite_start]**戰略攔截**：將「趨勢方向」視為資金准入的首要條件，斜率下彎則計畫自動失效 [cite: 60]。
-4.  **模組解耦**：移除 `calculator.py`，將邏輯收納至軍師與精算師模組，提升維護效率。
-
----
-
-## 六、 $0 元技術棧 (The $0 Stack)
-
-* **雲端網頁**：Streamlit Community Cloud (Free)。
-* **核心語言**：Python 3.10+。
-* **數據來源**：yfinance (提供歷史 Adj Close 與宏觀指標)。
-* **自動化**：GitHub Actions (每日收盤後自動掃描)。
+| 來源 | 數據 | 更新頻率 |
+| --- | --- | --- |
+| Yahoo Finance (yfinance) | 個股/ETF 收盤價、SPY/QQQ/^TWII/^VIX/TWD=X | EOD（收盤後） |
+| TWSE 證交所 API | 台股加權指數本益比歷史序列 | 月報 |
 
 ---
 
-## 七、 待辦事項：Version 3.0 Backlog
-* [ ] 實作「一鍵傳送至 LINE」掛單通知。
-* [ ] 多檔自選股 (Watchlist) 循環掃描雷達模式。
-* [ ] 手續費與稅金自動精算模組。
+## 技術棧
+
+- **Frontend**: Streamlit Community Cloud（免費部署，push to `main` 自動上線）
+- **Charts**: Plotly（互動式梯子圖）
+- **Data**: yfinance + TWSE API + pandas
+- **Concurrency**: `ThreadPoolExecutor(max_workers=5)` 平行抓取全球指標
 
 ---
 
-### 👨‍💻 技術負責人的最後結語
-這份 Ver 2.4 規格書已經完成從「想法」到「金融級工具」的蛻變。透過 **「軍師」** 的趨勢把關與 **「精算師」** 的成本導航，我們不僅是在寫程式，更是在建立一套能對抗市場恐懼、加速複利累積的數據體系。妳現在擁有的，是一個確定性的投資 Agent 架構。
+## 與 DipMaster Pro 的差異
+
+本工具為 **Lite 版**，定位為快速單標的診斷。完整版（[DipMaster Pro](https://dipmaster-navigator-tzutzu.streamlit.app/)）另含：市場週期五指標系統、反向金字塔資金池、LINE 通知、機會過期偵測、AuditLogger 等進階功能。
+
+詳細差異對照請參閱 [`differences_lite_vs_pro.txt`](differences_lite_vs_pro.txt)。
+
+---
+
+## 免責聲明
+
+本工具所有分析結果僅供教育與研究參考，不構成任何形式之投資建議。投資涉及風險，過去績效不代表未來表現。
