@@ -28,7 +28,14 @@ ev = st.session_state.evidence
 
 # --- 2. 全球戰情實證看板 ---
 st.subheader("🌐 1. 全球戰情實證看板 (Global Command Center)")
-st.caption(f"🕒 數據最後同步：{ev['Last_Synced']} | 來源：TWSE, Yahoo Finance")
+
+col_title, col_refresh = st.columns([6, 1])
+with col_title:
+    st.caption(f"🕒 數據最後同步：{ev['Last_Synced']} | 來源：TWSE, Yahoo Finance")
+with col_refresh:
+    if st.button("🔄 重新整理"):
+        del st.session_state['evidence']
+        st.rerun()
 
 row1_1, row1_2, row1_3 = st.columns(3)
 with row1_1:
@@ -75,7 +82,6 @@ if run:
             ana = analyze_stock(df)
             plan = calculate_investment_plan(budget, n_batches, ana, ev, is_us)
 
-            # 資金管理建議
             st.subheader("💰 2. 資金管理建議")
             s1, s2, s3 = st.columns(3)
             s1.metric("計畫配置總額", f"${plan['summary']['allocated']:,.0f}")
@@ -83,7 +89,6 @@ if run:
             s3.metric("本金使用率", f"{plan['summary']['usage']:.1f}%")
             st.progress(plan['summary']['usage'] / 100)
 
-            # 診斷報告
             st.divider()
             st.subheader(f"📊 3. {symbol} 專家診斷報告")
 
@@ -94,7 +99,6 @@ if run:
 
             st.info(ana['Narrative'])
 
-            # 決策建議總表
             if not plan['table'].empty:
                 st.write("### 📋 決策建議總表 (The Master Table)")
                 st.dataframe(plan['table'], width="stretch")

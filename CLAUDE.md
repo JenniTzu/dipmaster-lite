@@ -2,63 +2,72 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Identity & Deployment
+
+- **App name**: DipMaster Lite — 快速乖離診斷
+- **GitHub repo**: `github.com/JenniTzu/dipmaster-lite`
+- **Live URL**: `https://dipmaster-lite-b8v8na4gubqcmum7urzhv2.streamlit.app/`
+- **Platform**: Streamlit Community Cloud (free tier) — pushes to `main` auto-deploy
+
 ## Commands
 
 ```bash
-# Run the app locally
+# Run locally
 streamlit run app.py
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-There are no tests or linting scripts defined. The app is deployed to Streamlit Community Cloud (free tier) — the live version updates when `main` is pushed to GitHub.
+No tests or linting scripts defined.
 
 ## Architecture
 
-This is a **decoupled 4-module Streamlit app** for data-driven investment dip-buying decisions. Data flows strictly one-way: `data_loader → analyzer → capital_manager → app.py (UI)`.
-
-### Module roles
+Decoupled 4-module app. Data flows one-way: `data_loader → analyzer → capital_manager → app.py`.
 
 | File | Role | Key output |
 |---|---|---|
-| `src/data_loader.py` | Fetch & cache raw market data | `get_stock_data(ticker)` → DataFrame with `Close`, `MA240`, `MA240_Slope`; `get_market_evidence()` → global evidence dict |
-| `src/analyzer.py` | Compute bias%, slope, trend diagnosis | `analyze_stock(df)` → dict with `Current_Price`, `MA240`, `Bias_%`, `Is_Downtrend`, `Narrative` |
-| `src/capital_manager.py` | Generate staged buy plan with cost averaging | `calculate_investment_plan(...)` → dict with `summary` and `table` DataFrame (8 columns) |
-| `app.py` | Streamlit UI, session state, ticker normalization | Renders Global Command Center + Master Table |
+| `src/data_loader.py` | Fetch market data (parallel) | `get_stock_data(ticker)` → DataFrame; `get_market_evidence()` → evidence dict |
+| `src/analyzer.py` | Compute bias%, slope, trend | `analyze_stock(df)` → 5-key dict |
+| `src/capital_manager.py` | Generate staged buy plan | `calculate_investment_plan(...)` → summary + table DataFrame |
+| `app.py` | Streamlit UI + ticker normalization | Global dashboard + Master Table |
 
-### Critical data contracts
+## Critical Data Contracts
 
-**`get_stock_data(ticker)`** returns a DataFrame with columns: `Close`, `MA240`, `MA240_Slope`. If data is unavailable, returns `None`. The 240-day window uses `expanding().mean()` as fallback when history < 240 days (common for newer ETFs — treat MA240 as unreliable in those cases).
+**`get_stock_data(ticker)`** → DataFrame with `Close`, `MA240`, `MA240_Slope`. Returns `None` if unavailable. Uses `expanding().mean()` fallback when history < 240 days (new ETFs) — MA240 unreliable in that case.
 
-**`analyze_stock(df)`** returns exactly these 5 keys — `capital_manager` depends on all of them:
+**`analyze_stock(df)`** → exactly these 5 keys (`capital_manager` depends on all):
 ```python
 {'Current_Price', 'MA240', 'Bias_%', 'Is_Downtrend', 'Narrative'}
 ```
 
-**`calculate_investment_plan(total_budget, n_batches, analysis, evidence, is_us)`** — the `is_us` flag controls whether FX conversion (USD/TWD) applies to the shares calculation. It is derived in `app.py` as `not (symbol.endswith(".TW") or symbol.endswith(".TWO"))` — covers both TWSE and TPEx-listed securities.
+**`calculate_investment_plan(total_budget, n_batches, analysis, evidence, is_us)`** — `is_us` is derived in `app.py` as `not (symbol.endswith(".TW") or symbol.endswith(".TWO"))`. Covers both TWSE (`.TW`) and TPEx (`.TWO`) securities.
 
-### Ticker normalization
+## Ticker Normalization
 
-`normalize_ticker()` in `app.py` auto-appends `.TW` to bare 4–6 digit numeric codes (e.g. `0050` → `0050.TW`). Taiwan stocks/ETFs listed on TWSE use `.TW`; TPEx/OTC-listed securities use `.TWO` and must be entered manually.
+`normalize_ticker()` in `app.py` auto-appends `.TW` to bare 4–6 digit numeric codes (`0050` → `0050.TW`). Tickers already containing `.` are passed through unchanged. TPEx-listed securities (`.TWO`) must be entered manually.
 
-### Global evidence dict structure
+## Data Caching Behaviour
 
-`get_market_evidence()` returns:
+`get_market_evidence()` is cached in `st.session_state['evidence']` for the entire session lifetime. Data refreshes only when the user opens a new session or clicks the **🔄 重新整理** button (which deletes the key and calls `st.rerun()`). There is no TTL or background scheduler — this is intentional since yfinance data is EOD.
+
+`get_market_evidence()` fetches 5 tickers (SPY, QQQ, ^TWII, ^VIX, TWD=X) in parallel via `ThreadPoolExecutor(max_workers=5)`. TWD=X is fetched with `period="5y"` to support the FX percentile calculation, avoiding a second API call.
+
+## Global Evidence Dict Structure
+
 ```python
 {
   'TAIEX_PE': float, 'TAIEX_Label': str, 'PE_Hist': pd.Series,
-  'Charts': {name: pd.Series},   # bias% series or raw close
+  'Charts': {name: pd.Series},   # bias% series or raw close (last 365 days)
   'Metrics': {name: value},      # latest scalar per indicator
-  'FX_Percentile': float,        # USD/TWD 5-year percentile
-  'Last_Synced': str
+  'FX_Percentile': float,        # USD/TWD position in 5-year range
+  'Last_Synced': str             # datetime string, shown in UI
 }
 ```
-This dict is cached in `st.session_state['evidence']` for the session lifetime to avoid redundant API calls on every interaction.
 
-### Key business logic
+## Key Business Logic
 
-- **Bias%** = `(Price_adj − 240MA_adj) / 240MA_adj × 100` — computed over adjusted (auto_adjust=True) prices to strip dividend distortion.
-- **Slope intercept**: if `MA240_Slope < 0` (5-day diff of MA240), the plan is flagged as downtrend and shown as a warning.
-- **Staged buy ladder**: each batch steps down by 2% bias from current bias. First batch is capped at current price if target > current.
-- **Shares calculation**: `int((batch_twd / fx) // target_price)` — floors to whole shares; Taiwan market lot sizes (1張 = 1000股) are not enforced.
+- **Bias%** = `(Price_adj − 240MA_adj) / 240MA_adj × 100` using `auto_adjust=True` prices.
+- **Slope intercept**: `MA240_Slope < 0` (5-day diff of MA240) flags downtrend.
+- **Staged buy ladder**: each batch steps down 2% bias from current. First batch capped at current price if target > current.
+- **Shares**: `int((batch_twd / fx) // target_price)` — whole shares only; Taiwan lot sizes (1張 = 1000股) not enforced.

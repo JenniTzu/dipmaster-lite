@@ -15,10 +15,7 @@ def get_stock_data(ticker):
     """【連線強化版】解決台股讀取不到的問題，並計算 V1.7 斜率"""
     try:
         stock = yf.Ticker(ticker)
-        # 嘗試抓取 5 年資料，強制還原權息
         df = stock.history(period="5y", auto_adjust=True)
-        
-        # 💡 若歷史資料為空 (Yahoo 常見 bug)，嘗試改用 1 年資料作為緩衝
         if df.empty:
             df = stock.history(period="1y", auto_adjust=True)
             
@@ -27,7 +24,6 @@ def get_stock_data(ticker):
             
         # 計算 V1.7 斜率與 240MA
         df['MA240'] = df['Close'].rolling(window=240).mean()
-        # 補齊最近的 MA240 (若資料不足 240 筆，則用現有資料平均)
         if df['MA240'].isnull().all():
             df['MA240'] = df['Close'].expanding().mean()
             
@@ -59,7 +55,7 @@ def get_dynamic_taiex_pe_info_with_hist():
         label = "偏高" if pct > 70 else ("偏低" if pct < 30 else "中性")
         
         return {'latest': latest, 'label': f"{pct:.1f}% ({label})", 'history': pe_series}
-    except:
+    except Exception:
         return {'latest': 18.2, 'label': "72% (中性)", 'history': pd.Series([18.2]*20)}
 
 # --- 3. 全球戰情實證看板數據整合 ---
