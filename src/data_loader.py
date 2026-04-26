@@ -24,9 +24,10 @@ def get_stock_data(ticker):
             
         # 計算 V1.7 斜率與 240MA
         df['MA240'] = df['Close'].rolling(window=240).mean()
-        if df['MA240'].isnull().all():
+        ma240_reliable = not df['MA240'].isnull().all()
+        if not ma240_reliable:
             df['MA240'] = df['Close'].expanding().mean()
-            
+        df['MA240_Reliable'] = ma240_reliable
         df['MA240_Slope'] = df['MA240'].diff(5)
         return df
     except Exception as e:

@@ -34,12 +34,15 @@ Decoupled 4-module app. Data flows one-way: `data_loader → analyzer → capita
 
 ## Critical Data Contracts
 
-**`get_stock_data(ticker)`** → DataFrame with `Close`, `MA240`, `MA240_Slope`. Returns `None` if unavailable. Uses `expanding().mean()` fallback when history < 240 days (new ETFs) — MA240 unreliable in that case.
+**`get_stock_data(ticker)`** → DataFrame with `Close`, `MA240`, `MA240_Slope`, `MA240_Reliable`. Returns `None` if unavailable. `MA240_Reliable = False` when history < 240 days; in that case `expanding().mean()` is used and `app.py` surfaces a warning.
 
-**`analyze_stock(df)`** → exactly these 5 keys (`capital_manager` depends on all):
+**`analyze_stock(df)`** → exactly these 7 keys (`capital_manager` depends on the first 5):
+
 ```python
-{'Current_Price', 'MA240', 'Bias_%', 'Is_Downtrend', 'Narrative'}
+{'Current_Price', 'MA240', 'Bias_%', 'Is_Downtrend', 'Narrative', 'Slope', 'MA240_Reliable'}
 ```
+
+`Slope` = raw 5-day finite diff of MA240 (float). `MA240_Reliable` = bool. `Narrative` now includes zone context: above MA240 → distance-to-MA note; below MA240 → "加碼觀察區" confirmation.
 
 **`calculate_investment_plan(total_budget, n_batches, analysis, evidence, is_us)`** — `is_us` is derived in `app.py` as `not (symbol.endswith(".TW") or symbol.endswith(".TWO"))`. Covers both TWSE (`.TW`) and TPEx (`.TWO`) securities.
 
@@ -70,4 +73,6 @@ Decoupled 4-module app. Data flows one-way: `data_loader → analyzer → capita
 - **Bias%** = `(Price_adj − 240MA_adj) / 240MA_adj × 100` using `auto_adjust=True` prices.
 - **Slope intercept**: `MA240_Slope < 0` (5-day diff of MA240) flags downtrend.
 - **Staged buy ladder**: each batch steps down 2% bias from current. First batch capped at current price if target > current.
-- **Shares**: `int((batch_twd / fx) // target_price)` — whole shares for both US and TW. Taiwan supports odd-lot trading (零股), so lot-size rounding is not applied. `fx=1.0` for TW so `batch_twd / fx = batch_twd` (pure TWD arithmetic). `batch_cost_twd = shares × target_price × fx`. Weighted-average-cost = `(accumulated_cost_twd / fx) / accumulated_shares` — USD/share for US, TWD/share for TW. Column labels are fixed: `"建議買入 (股)"` / `"累積 (股)"` for all targets. `app.py` warns when `len(table) < n_batches` (budget below single-share price).
+- **Shares**: `int((batch_twd / fx) // target_price)` — whole shares for both US and TW. Taiwan supports odd-lot trading (零股), so lot-size rounding is not applied. `fx=1.0` for TW so `batch_twd / fx = batch_twd` (pure TWD arithmetic). `batch_cost_twd = shares × target_price × fx`. Weighted-average-cost column is currency-labeled: `"加權均成 (USD/股)"` for US, `"加權均成 (TWD/股)"` for TW. `app.py` warns when `len(table) < n_batches` (budget below single-share price).
+- **Positive Bias% guard**: when `Bias% > 0`, `app.py` shows a "正乖離預演模式" warning — the plan is preview-only since price is above MA240 (no safety margin by strategy definition).
+- **MA240_Reliable**: when `False`, `app.py` shows a data-quality warning (expanding mean used instead of true 240-day MA).

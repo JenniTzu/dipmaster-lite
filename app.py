@@ -44,11 +44,11 @@ def build_ladder_chart(df, table, ana, symbol):
         )
     )
 
-    # 批次目標線（前幾批淺綠 → 中段橘 → 深部深紅，越深越有安全邊際）
+    # 批次目標線（越深折價越大 = 越有價值，顏色由黃→綠→青→藍加深）
     batch_colors = [
-        '#b7e4c7', '#74c69d', '#40916c', '#1b4332',
-        '#fca311', '#f48c06', '#e85d04',
-        '#dc2f02', '#9d0208', '#6a040f',
+        '#e9c46a', '#90be6d', '#52b788', '#40916c',
+        '#26a69a', '#00b4d8', '#0096c7', '#0077b6',
+        '#023e8a', '#03045e',
     ]
 
     for idx, row in table.iterrows():
@@ -117,6 +117,16 @@ row1_1, row1_2, row1_3 = st.columns(3)
 with row1_1:
     st.metric("台股 P/E (TWSE)", f"{ev['TAIEX_PE']}x", ev['TAIEX_Label'])
     st.line_chart(ev['PE_Hist'], height=150)
+    try:
+        _pe_pct = float(str(ev['TAIEX_Label']).split('%')[0])
+        if _pe_pct < 30:
+            st.caption("🟢 歷史低估區（< 30%），有利加碼")
+        elif _pe_pct > 70:
+            st.caption("🔴 歷史偏高區（> 70%），提高戒心")
+        else:
+            st.caption("🟡 歷史中性區（30–70%）")
+    except Exception:
+        pass
 with row1_2:
     st.metric("美股 SPY 位階", ev['Metrics'].get('美股標普', 'N/A'), "S&P 500 對比 240MA")
     if '美股標普' in ev['Charts']: st.line_chart(ev['Charts']['美股標普'], height=150)
@@ -134,6 +144,18 @@ with row2_2:
 with row2_3:
     st.metric("恐懼指標 (VIX)", f"{ev['Metrics'].get('VIX', 'N/A')}", "市場波動率")
     if 'VIX' in ev['Charts']: st.area_chart(ev['Charts']['VIX'], height=150)
+    _vix = ev['Metrics'].get('VIX')
+    if isinstance(_vix, (int, float)):
+        if _vix >= 40:
+            st.caption(f"🔴 {_vix:.1f} — 極度恐慌（> 40），歷史黑天鵝區")
+        elif _vix >= 30:
+            st.caption(f"🟠 {_vix:.1f} — 恐慌區（30–40），歷史加碼良機")
+        elif _vix >= 20:
+            st.caption(f"🟡 {_vix:.1f} — 正常波動（20–30），觀察乖離率決定進場")
+        elif _vix >= 15:
+            st.caption(f"🟢 {_vix:.1f} — 低波動（15–20）")
+        else:
+            st.caption(f"⚪ {_vix:.1f} — 市場平靜（< 15），折價機會有限")
 
 st.divider()
 
@@ -160,20 +182,27 @@ if run:
 
             st.subheader("💰 2. 資金管理建議")
             s1, s2, s3 = st.columns(3)
-            s1.metric("計畫配置總額", f"${plan['summary']['allocated']:,.0f}")
-            s2.metric("剩餘備用購買力", f"${budget - plan['summary']['allocated']:,.0f}")
+            s1.metric("計畫配置總額", f"NT${plan['summary']['allocated']:,.0f}")
+            s2.metric("剩餘備用購買力", f"NT${budget - plan['summary']['allocated']:,.0f}")
             s3.metric("本金使用率", f"{plan['summary']['usage']:.1f}%")
-            st.progress(plan['summary']['usage'] / 100)
+            st.progress(min(plan['summary']['usage'] / 100, 1.0))
 
             st.divider()
             st.subheader(f"📊 3. {symbol} 專家診斷報告")
 
+            slope_val = ana.get('Slope', 0.0)
             if plan['summary'].get('is_downtrend', False):
-                st.error("🚨 警告：目前標的處於下彎趨勢 (Slope < 0)，階梯計畫僅供參考，不建議立即執行。")
+                st.error(f"🚨 警告：目前標的處於下彎趨勢（Slope = {slope_val:+.4f} < 0），年線轉頭向下，階梯計畫僅供參考，不建議立即執行。")
             else:
-                st.success("✅ 趨勢實證：目前標的長期趨勢向上，具備較高安全邊際。")
+                st.success(f"✅ 趨勢實證：目前標的長期趨勢向上（Slope = {slope_val:+.4f} > 0），具備較高安全邊際。")
+
+            if not ana.get('MA240_Reliable', True):
+                st.warning("⚠️ 此標的歷史資料不足 240 個交易日，年線（MA240）以擴展均值替代，乖離率與目標價精度有限，請謹慎參考。")
 
             st.info(ana['Narrative'])
+
+            if ana['Bias_%'] > 0:
+                st.warning(f"⚠️ 正乖離預演模式：現價高於年線（+{ana['Bias_%']:.2f}%），依策略定義尚未進入安全邊際區。以下計畫以現價為第一批起點，供預演參考，非即時買入建議。")
 
             if not plan['table'].empty:
                 st.write("### 📈 加碼梯子視覺化 (Ladder Chart)")

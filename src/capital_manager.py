@@ -15,6 +15,7 @@ def calculate_investment_plan(total_budget, n_batches, analysis, evidence, is_us
         return {"summary": {"allocated": 0, "usage": 0, "is_downtrend": is_downtrend}, "table": pd.DataFrame()}
 
     batch_twd = total_budget / n_batches if n_batches > 0 else 0
+    cost_col = "加權均成 (USD/股)" if is_us else "加權均成 (TWD/股)"
     plan = []
     accumulated_shares = 0
     accumulated_cost_twd = 0
@@ -49,7 +50,7 @@ def calculate_investment_plan(total_budget, n_batches, analysis, evidence, is_us
             "建議買入 (股)": shares,
             "美金原幣 (USD)": round(usd_cost, 2) if is_us else "-",
             "累積 (股)": accumulated_shares,
-            "加權平均成本 (每股)": round(w_avg_cost, 2)
+            cost_col: round(w_avg_cost, 2)
         })
 
     df_plan = pd.DataFrame(plan)
