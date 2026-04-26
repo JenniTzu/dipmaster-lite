@@ -1,8 +1,83 @@
 import re
 import streamlit as st
+import plotly.graph_objects as go
 from src.data_loader import get_stock_data, get_market_evidence
 from src.analyzer import analyze_stock
 from src.capital_manager import calculate_investment_plan
+
+
+def build_ladder_chart(df, table, ana, symbol):
+    recent_close = df['Close'].tail(120)
+    recent_ma240 = df['MA240'].tail(120)
+    current_price = ana['Current_Price']
+
+    fig = go.Figure()
+
+    # 收盤價
+    fig.add_trace(go.Scatter(
+        x=recent_close.index, y=recent_close.values,
+        name='收盤價', mode='lines',
+        line=dict(color='#90E0EF', width=2),
+        hovertemplate='%{x|%Y-%m-%d}　收盤：%{y:.2f}<extra></extra>'
+    ))
+
+    # MA240 年線
+    valid_ma = recent_ma240.dropna()
+    if not valid_ma.empty:
+        fig.add_trace(go.Scatter(
+            x=valid_ma.index, y=valid_ma.values,
+            name='MA240 年線', mode='lines',
+            line=dict(color='#FFB703', width=2, dash='dot'),
+            hovertemplate='MA240：%{y:.2f}<extra></extra>'
+        ))
+
+    # 現價線
+    fig.add_hline(
+        y=current_price,
+        line=dict(color='rgba(255,255,255,0.9)', width=2),
+        annotation_text=f"現價 {current_price:.2f}",
+        annotation_position="top right",
+        annotation=dict(
+            font=dict(size=11, color='#FFFFFF'),
+            bgcolor='rgba(30,30,30,0.6)', borderpad=4
+        )
+    )
+
+    # 批次目標線（前幾批淺綠 → 中段橘 → 深部深紅，越深越有安全邊際）
+    batch_colors = [
+        '#b7e4c7', '#74c69d', '#40916c', '#1b4332',
+        '#fca311', '#f48c06', '#e85d04',
+        '#dc2f02', '#9d0208', '#6a040f',
+    ]
+
+    for idx, row in table.iterrows():
+        color = batch_colors[min(idx, len(batch_colors) - 1)]
+        target = row['目標成交價']
+        label = f"  {row['階梯']}  {row['觸發條件 (Bias%)']}  →  {target:.2f}"
+        yanchor = "top" if idx % 2 == 0 else "bottom"
+        fig.add_hline(
+            y=target,
+            line=dict(color=color, width=1.2, dash='dash'),
+            annotation_text=label,
+            annotation_position="right",
+            annotation=dict(
+                font=dict(size=9, color=color),
+                yanchor=yanchor, xanchor="left"
+            )
+        )
+
+    fig.update_layout(
+        title=dict(text=f"📍 {symbol}　近 120 日走勢 × 加碼梯子", font=dict(size=15)),
+        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.07)', tickformat='%m/%d'),
+        yaxis=dict(title='價格', showgrid=True, gridcolor='rgba(255,255,255,0.07)'),
+        template='plotly_dark',
+        height=500,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        hovermode='x unified',
+        margin=dict(l=60, r=210, t=60, b=40)
+    )
+
+    return fig
 
 
 def normalize_ticker(raw: str) -> str:
@@ -100,8 +175,14 @@ if run:
             st.info(ana['Narrative'])
 
             if not plan['table'].empty:
+                st.write("### 📈 加碼梯子視覺化 (Ladder Chart)")
+                st.plotly_chart(
+                    build_ladder_chart(df, plan['table'], ana, symbol),
+                    use_container_width=True
+                )
+
                 st.write("### 📋 決策建議總表 (The Master Table)")
-                st.dataframe(plan['table'], width="stretch")
+                st.dataframe(plan['table'], use_container_width=True)
                 if not is_us:
                     st.caption("💡 台股支援零股交易，以整股計算。「加權平均成本 (每股)」單位為台幣（TWD）。")
                 if len(plan['table']) < n_batches:
