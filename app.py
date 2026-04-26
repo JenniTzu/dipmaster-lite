@@ -105,7 +105,72 @@ if run:
         else:
             st.error(f"❌ 無法讀取 '{symbol}' 數據。請確認代號是否正確（台股請加 .TW），或稍後再試。")
 
-# --- 5. 系統運算邏輯說明 ---
+# --- 5. 策略白皮書 ---
+st.divider()
+with st.expander("📖 策略白皮書：為什麼這樣買？(Investment Strategy Report)"):
+    st.markdown("## 年線乖離階梯加碼法（240MA Bias Ladder DCA）")
+    st.caption("Strategy Report v1.0 | 本白皮書對應 STRATEGY_REPORT.txt 完整版")
+
+    st.markdown("### 策略分類")
+    st.info("**策略類型**：價值錨點 × 技術過濾 × 系統性分批買入  \n**適用標的**：具備長期正報酬歷史的寬基 ETF（如 QQQ、SPY、0050.TW）  \n**核心信仰**：優質資產的長期均值回歸特性，系統紀律優於主觀判斷")
+
+    st.markdown("### 四大學術支柱")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("#### 1. 均值回歸（Mean Reversion）")
+        st.write("De Bondt & Thaler (1985) 研究顯示，過度下跌的資產長期會回歸歷史均值。本系統以 240 日均線（MA240，約一個完整交易年）作為長期均值的代理指標，價格低於 MA240 即進入潛在價值買入區。")
+
+        st.markdown("#### 2. 分批買入降低時間風險（Systematic DCA）")
+        st.write("Statman (1995) 研究顯示，相較一次性全倉，分批買入能有效降低擇時錯誤的衝擊，在波動市場取得更優的平均成本。本系統將資金等分為 N 批，每批以固定 2% 乖離率間距遞進，愈跌愈買，自動實現成本平攤。")
+
+    with col_b:
+        st.markdown("#### 3. 安全邊際（Margin of Safety）")
+        st.write("Benjamin Graham《智慧型股票投資人》：以低於內在價值的價格買入，可提供下行緩衝。乖離率為負（價格低於年均值）即是本系統定義的「安全邊際區」，乖離率每下跌 2% 觸發一個新批次，邊際安全性遞增。")
+
+        st.markdown("#### 4. 趨勢過濾防止落刃（Slope Intercept）")
+        st.write("Faber (2007) 量化研究顯示，加入移動平均趨勢過濾能顯著提升長期報酬並降低最大回撤。本系統計算 MA240 的 5 日斜率，若斜率 < 0（年線轉頭向下），發出警告暫緩加碼，等待趨勢確認翻多後再進場。")
+
+    st.divider()
+    st.markdown("### 核心指標計算邏輯")
+
+    st.markdown("#### 年線乖離率（Bias%）— 核心觸發指標")
+    st.latex(r"Bias\% = \frac{Price_{adj} - MA240_{adj}}{MA240_{adj}} \times 100")
+    st.write("使用「還原股利後收盤價（Adjusted Close）」計算，避免配息造成技術失真。Bias% < 0 代表價格位於年線之下，進入加碼觀察區。")
+
+    st.markdown("#### MA240 斜率（Slope）— 趨勢閘門")
+    st.latex(r"Slope = MA240_{today} - MA240_{5\ days\ ago}")
+    st.write("Slope > 0：年線向上，趨勢健康可加碼。Slope < 0：年線轉頭，發出紅色警報，暫緩執行。")
+
+    st.markdown("#### 階梯觸發價（Target Price）")
+    st.latex(r"Target\_Price_n = MA240 \times (1 + (Bias\%_{current} - (n-1) \times 2\%))")
+    st.write("每批間距固定 2%，第一批不得高於當前市價。每批投入金額 = 總預算 ÷ N（等額分配）。")
+
+    st.divider()
+    st.markdown("### 各市場指標解讀框架")
+
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        st.markdown("**台股 P/E 百分位**")
+        st.write("< 30%：歷史低估，有利加碼  \n30–70%：中性  \n> 70%：偏高，提高戒心")
+    with d2:
+        st.markdown("**VIX 恐懼指數**")
+        st.write("< 15：市場平靜，折價有限  \n20–30：正常波動，可觀察  \n> 30：市場恐慌，歷史加碼良機  \n> 40：黑天鵝極端恐慌")
+    with d3:
+        st.markdown("**USD/TWD 匯率百分位（5年）**")
+        st.write("美元偏強（高百分位）：換匯成本高  \n美元偏弱（低百分位）：換匯時機相對有利")
+
+    st.divider()
+    st.markdown("### 策略適用條件")
+    ok1, ok2 = st.columns(2)
+    with ok1:
+        st.success("✅ **適用**\n- 寬基指數 ETF（S&P 500、NASDAQ-100、台灣 50）\n- 長期持有 3 年以上\n- 接受短期帳面虧損，相信長期均值回歸")
+    with ok2:
+        st.error("❌ **不適用**\n- 個股（可能永久下市，無均值回歸保障）\n- 槓桿型 ETF（內含損耗，長期不具均值回歸）\n- 需短期動用的緊急備用金")
+
+    st.caption("⚠️ 免責聲明：本系統所有分析結果僅供教育與研究參考，不構成任何形式之投資建議。投資涉及風險，過去績效不代表未來表現。")
+
+# --- 6. 系統運算邏輯說明 ---
 st.divider()
 with st.expander("📝 查看軍師運算邏輯 (Calculation Methodology)"):
     st.write("### 核心決策實證邏輯")
