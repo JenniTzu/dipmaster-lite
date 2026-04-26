@@ -102,6 +102,10 @@ if run:
             if not plan['table'].empty:
                 st.write("### 📋 決策建議總表 (The Master Table)")
                 st.dataframe(plan['table'], width="stretch")
+                if not is_us:
+                    st.caption("💡 台股以整張計算（1 張 = 1,000 股）。「加權平均成本 (每股)」為每股台幣成本。")
+                if len(plan['table']) < n_batches:
+                    st.warning(f"⚠️ 部分批次因每批預算不足以購買 1 張（目標成交價 × 1,000 > 每批金額）而略過，實際執行 {len(plan['table'])}/{n_batches} 批。建議提高總預算或減少批次數。")
         else:
             st.error(f"❌ 無法讀取 '{symbol}' 數據。請確認代號是否正確（台股請加 .TW），或稍後再試。")
 

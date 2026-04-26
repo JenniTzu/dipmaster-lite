@@ -70,4 +70,5 @@ Decoupled 4-module app. Data flows one-way: `data_loader → analyzer → capita
 - **Bias%** = `(Price_adj − 240MA_adj) / 240MA_adj × 100` using `auto_adjust=True` prices.
 - **Slope intercept**: `MA240_Slope < 0` (5-day diff of MA240) flags downtrend.
 - **Staged buy ladder**: each batch steps down 2% bias from current. First batch capped at current price if target > current.
-- **Shares**: `int((batch_twd / fx) // target_price)` — whole shares only; Taiwan lot sizes (1張 = 1000股) not enforced.
+- **Shares (US)**: `int((batch_twd / fx) // target_price)` — whole shares.
+- **Lots (TW)**: `int(batch_twd // (target_price * TW_LOT_SIZE))` — whole lots (`TW_LOT_SIZE = 1000`). `batch_cost_twd = lots × 1000 × target_price`. Weighted-average-cost is always per-share in TWD. Column labels switch dynamically: `"建議買入 (張)"` / `"累積 (張)"` for TW; `"建議買入 (股)"` / `"累積 (股)"` for US. Batches where budget < 1-lot cost are skipped silently; `app.py` shows a warning when `len(table) < n_batches`.
