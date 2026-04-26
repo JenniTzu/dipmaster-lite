@@ -1,4 +1,5 @@
 import re
+import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from src.data_loader import get_stock_data, get_market_evidence
@@ -255,17 +256,44 @@ with st.expander("📖 策略白皮書：為什麼這樣買？(Investment Strate
 
     st.caption("⚠️ 免責聲明：本系統所有分析結果僅供教育與研究參考，不構成任何形式之投資建議。投資涉及風險，過去績效不代表未來表現。")
 
-# --- 6. 系統運算邏輯說明 ---
+# --- 6. 決策速查卡 ---
 st.divider()
-with st.expander("📝 查看軍師運算邏輯 (Calculation Methodology)"):
-    st.write("### 核心決策實證邏輯")
-    st.markdown(r"#### 1. 趨勢過濾：斜率攔截 (V1.7 核心)")
-    st.write("利用 240MA 之線性回歸斜率判斷長期慣性。若斜率 < 0，系統會發出警示以避免「接落下的刀子」。")
+with st.expander("📝 決策速查卡 (Quick Reference)"):
+    st.markdown("### 三步決策流程")
+    flow = pd.DataFrame({
+        "步驟":    ["① 趨勢閘門",                          "② 進場條件",                              "③ 計算批次目標價"],
+        "判斷條件": ["MA240 5日差分 (Slope) < 0 ?",         "Bias% (現價 vs 年線) < 0 ?",              "設定各批次觸發乖離率"],
+        "是 →":    ["🔴 警告，暫緩執行加碼計畫",            "✅ 啟動階梯買入計畫",                     "依下方公式逐批計算目標價"],
+        "否 →":    ["✅ 年線健康，繼續 Step ②",             "⏳ 尚未進入買入區，持續觀察",              "—"],
+    })
+    st.dataframe(flow, use_container_width=True, hide_index=True)
 
-    st.markdown(r"#### 2. 觸發條件：還原年線負乖離 ($Bias\%$)")
-    st.latex(r"Bias\% = \frac{Price_{adj} - 240MA_{adj}}{240MA_{adj}}")
+    st.divider()
+    st.markdown("### 公式速查（全部以 MA240 為錨點）")
 
-    st.markdown(r"#### 3. 目標成交價精算 (Target Price)")
-    st.latex(r"Target\ Price = Current\ Price \times (1 + Bias_{target}\%)")
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        st.markdown("**① 年線乖離率（觸發條件）**")
+        st.latex(r"Bias\% = \frac{Price_{adj} - MA240_{adj}}{MA240_{adj}} \times 100")
 
-    st.info("💡 數據實證：本系統所有指標皆由即時 API 抓取，杜絕人為誤判。")
+        st.markdown("**② 趨勢閘門斜率**")
+        st.latex(r"Slope = MA240_{t} - MA240_{t-5}")
+        st.caption("5日有限差分（非線性回歸）。Slope < 0 表示年線轉頭向下，啟動警告。")
+
+    with fc2:
+        st.markdown("**③ 第 n 批觸發乖離率**")
+        st.latex(r"Bias_n = Bias_{current} - (n-1) \times 2\%")
+
+        st.markdown("**④ 第 n 批目標成交價（錨點：年線 MA240）**")
+        st.latex(r"Target_n = MA240 \times \left(1 + \frac{Bias_n}{100}\right)")
+        st.caption("錨點為 MA240，非現價。乖離率越負，目標價越低，安全邊際越大。")
+
+    st.divider()
+    st.markdown("### 兩個內建保護機制")
+    pm1, pm2 = st.columns(2)
+    with pm1:
+        st.info("🛡️ **第一批不追高**\n\n若第 1 批計算 Target₁ > 現價（Bias% > 0），強制以現價為上限，避免在年線以上超價執行。")
+    with pm2:
+        st.info("⚖️ **等額分配**\n\n每批投入金額 = 總預算 ÷ N，各批風險一致。愈跌愈買自動攤平成本。反向金字塔（加重深批）為 Pro 版功能。")
+
+    st.caption("💡 所有數據由 Yahoo Finance / TWSE API 即時抓取，無人工介入。")
